@@ -1,6 +1,7 @@
 name: keepalive
 
-# 每 8 分钟唤醒一次机器人（Render 免费实例 15 分钟无流量即休眠，留足余量）
+# 每 8 分钟唤醒机器人（Render 免费实例 15 分钟无流量即休眠）
+# 仅在 07:00-23:00 CST（23:00-15:00 UTC）保活，深夜休眠省 Render 额度。
 # public 仓库 → Actions 分钟数免费不限，不占用业务私有仓库的 2000 分钟额度。
 on:
   schedule:
@@ -16,7 +17,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: 检查时段（仅 07:00-23:00 CST 保活）
+        run: |
+          HOUR_UTC=$(date -u +%H)
+          # CST = UTC+8 → 07:00-23:00 CST = 23:00-15:00 UTC（跨午夜）
+          if [ "$HOUR_UTC" -ge 23 ] || [ "$HOUR_UTC" -lt 15 ]; then
+            echo "当前 UTC $HOUR_UTC（CST $(( (HOUR_UTC+8) % 24 )):00），在保活时段内 ✅"
+          else
+            echo "当前 UTC $HOUR_UTC（CST $(( (HOUR_UTC+8) % 24 )):00），非保活时段，跳过"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          fi
+        id: check_hour
+        shell: bash
+
       - name: 唤醒并检查机器人
+        if: steps.check_hour.outputs.skip != 'true'
         env:
           BOT_URL: ${{ secrets.BOT_PUSH_URL }}
         run: |

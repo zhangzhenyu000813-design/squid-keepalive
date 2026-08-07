@@ -1,0 +1,34 @@
+name: keepalive
+
+# 每 8 分钟唤醒一次机器人（Render 免费实例 15 分钟无流量即休眠，留足余量）
+# public 仓库 → Actions 分钟数免费不限，不占用业务私有仓库的 2000 分钟额度。
+on:
+  schedule:
+    - cron: "*/8 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 唤醒并检查机器人
+        env:
+          BOT_URL: ${{ secrets.BOT_PUSH_URL }}
+        run: |
+          if [ -z "$BOT_URL" ]; then
+            echo "未配置 BOT_PUSH_URL secret，跳过（Render 部署完成后请补上）"
+            exit 0
+          fi
+          for i in 1 2 3; do
+            code=$(curl -s -o /tmp/h.json -w "%{http_code}" --max-time 90 "$BOT_URL/healthz" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "机器人在线 ✅"; cat /tmp/h.json; exit 0
+            fi
+            echo "第 $i 次探测失败 (HTTP $code)，20s 后重试"; sleep 20
+          done
+          echo "::warning::机器人连续 3 次探测失败，请检查 Render 服务日志"
